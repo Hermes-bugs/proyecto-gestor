@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Estructuras de Datos</title>
+    <style>
+        :root {
+            --bg-body: #121212;
+            --bg-card: #1e1e1e;
+            --bg-sidebar: #181818;
+            --primary: #bb86fc;
+            --secondary: #03dac6;
+            --danger: #cf6679;
+            --text-main: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --border: #333;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { background-color: var(--bg-body); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar - Usuarios */
+        .sidebar { width: 250px; background-color: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; }
+        .sidebar h2 { margin-bottom: 20px; font-size: 1.2rem; color: var(--primary); }
+        .user-item {
+            padding: 15px; margin-bottom: 10px; background: var(--bg-card); border-radius: 8px; cursor: pointer;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: space-between;
+        }
+        .user-item:hover, .user-item.active { background: var(--primary); color: #000; transform: translateX(5px); }
+        .user-avatar { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        /* Main Content */
+        .main { flex: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .stats { display: flex; gap: 15px; }
+        .stat-box { background: var(--bg-card); padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.9rem; }
+        .stat-box span { font-weight: bold; color: var(--secondary); }
+
+        /* Formulario */
+        .task-form { background: var(--bg-card); padding: 20px; border-radius: 10px; margin-bottom: 20px; display: grid; grid-template-columns: 2fr 2fr 1fr 1fr auto; gap: 10px; align-items: end; border: 1px solid var(--border); }
+        input, select { background: #2c2c2c; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 5px; width: 100%; }
+        button { cursor: pointer; padding: 10px 20px; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
+        .btn-add { background: var(--secondary); color: #000; }
+        .btn-add:hover { background: #00b3a1; }
+        .btn-undo { background: var(--primary); color: #000; margin-left: 10px; display: none; } /* Oculto por defecto */
+
+        /* Lista de Tareas */
+        .task-list { display: flex; flex-direction: column; gap: 10px; }
+        .task-card {
+            background: var(--bg-card); padding: 20px; border-radius: 10px; border-left: 5px solid var(--text-muted);
+            display: flex; justify-content: space-between; align-items: center;
+            animation: slideIn 0.4s ease-out; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideOut { to { opacity: 0; transform: translateX(50px); } }
+
+        .task-card.status-pending { border-left-color: #ff9800; }
+        .task-card.status-progress { border-left-color: #2196f3; }
+        .task-card.status-completed { border-left-color: #4caf50; opacity: 0.7; text-decoration: line-through; }
+
+        .task-info h3 { font-size: 1.1rem; margin-bottom: 5px; }
+        .task-info p { font-size: 0.85rem; color: var(--text-muted); }
+        .task-meta { font-size: 0.8rem; margin-top: 5px; display: flex; gap: 10px; }
+        
+        .actions button { margin-left: 5px; padding: 5px 10px; font-size: 0.8rem; }
+        .btn-delete { background: var(--danger); color: white; }
+        .btn-complete { background: var(--secondary); color: black; }
+
+        /* Notificaciones (Cola) */
+        .notification-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 100; }
+        .toast { background: var(--bg-card); border-left: 4px solid var(--primary); padding: 15px 25px; border-radius: 5px; color: white; box-shadow: 0 5px 15px rgba(0,0,0,0.5); animation: slideIn 0.3s; width: 300px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>👥 Usuarios</h2>
+        <div id="usersList">
+            </div>
+    </div>
+
+    <main class="main">
+        <div class="header">
+            <div>
+                <h1 id="currentUserTitle">Selecciona un usuario</h1>
+                <p id="currentUserSubtitle">Gestión de tareas personales</p>
+            </div>
+            <div class="stats" id="statsContainer" style="display:none;">
+                <div class="stat-box">Pendientes: <span id="countPending">0</span></div>
+                <div class="stat-box">En Progreso: <span id="countProgress">0</span></div>
+                <div class="stat-box">Completadas: <span id="countCompleted">0</span></div>
+            </div>
+            <button id="btnUndo" class="btn-undo" onclick="undoDelete()">↩ Deshacer Borrado</button>
+        </div>
+
+        <div class="task-form" id="taskFormContainer" style="display:none;">
+            <input type="text" id="inputTitle" placeholder="Título de la tarea">
+            <input type="text" id="inputDesc" placeholder="Descripción breve">
+            <select id="inputStatus">
+                <option value="pending">Pendiente</option>
+                <option value="progress">En Progreso</option>
+                <option value="completed">Completada</option>
+            </select>
+            <input type="date" id="inputDate">
+            <button class="btn-add" onclick="addTask()">+ Agregar</button>
+        </div>
+
+        <div id="taskList" class="task-list">
+            </div>
+    </main>
+
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <script>
+        // ==========================================
+        // 1. ESTRUCTURAS DE DATOS
+        // ==========================================
+
+        // --- Nodo para la Lista Doblemente Enlazada ---
+        class Node {
+            constructor(data) {
+                this.data = data; // {id, title, desc, status, date}
+                this.prev = null;
+                this.next = null;
+            }
+        }
+
+        // --- Lista Doblemente Enlazada (Para tareas) ---
+        class DoublyLinkedList {
+            constructor() {
+                this.head = null;
+                this.tail = null;
+                this.size = 0;
+            }
+
+            // Agregar al final
+            append(data) {
+                const newNode = new Node(data);
+                if (!this.head) {
+                    this.head = newNode;
+                    this.tail = newNode;
+                } else {
+                    this.tail.next = newNode;
+                    newNode.prev = this.tail;
+                    this.tail = newNode;
+                }
+                this.size++;
+            }
+
+            // Eliminar por ID
+            remove(id) {
+                let current = this.head;
+                while (current) {
+                    if (current.data.id === id) {
+                        if (current.prev) current.prev.next = current.next;
+                        else this.head = current.next; // Era el primero
+
+                        if (current.next) current.next.prev = current.prev;
+                        else this.tail = current.prev; // Era el último
+
+                        this.size--;
+                        return current.data; // Retornamos la data para la Pila de Deshacer
+                    }
+                    current = current.next;
+                }
+                return null;
+            }
+
+            // Convertir a Array para renderizar fácilmente
+            toArray() {
+                const elements = [];
+                let current = this.head;
+                while (current) {
+                    elements.push(current.data);
+                    current = current.next;
+                }
+                return elements;
+            }
+
+            // Actualizar estado
+            updateStatus(id, newStatus) {
+                let current = this.head;
+                while (current) {
+                    if (current.data.id === id) {
+                        current.data.status = newStatus;
+                        return;
+                    }
+                    current = current.next;
+                }
+            }
+        }
+
+        // --- Pila (Stack) para Deshacer eliminaciones ---
+        class Stack {
+            constructor() {
+                this.items = [];
+            }
+            push(element) { this.items.push(element); }
+            pop() { return this.items.pop(); }
+            isEmpty() { return this.items.length === 0; }
+        }
+
+        // --- Cola (Queue) para Notificaciones ---
+        class Queue {
+            constructor() {
+                this.items = [];
+            }
+            enqueue(element) {
+                this.items.push(element);
+                this.processQueue();
+            }
+            dequeue() { return this.items.shift(); }
+            
+            processQueue() {
+                if (this.items.length > 0) {
+                    showToast(this.items[this.items.length - 1]); // Mostramos visualmente
+                }
+            }
+        }
+
+        // ==========================================
+        // 2. LÓGICA DE NEGOCIO Y ESTADO
+        // ==========================================
+
+        const usersData = [
+            { id: 1, name: 'EDWIN', tasks: new DoublyLinkedList() },
+            { id: 2, name: 'QUE', tasks: new DoublyLinkedList() },
+            { id: 3, name: 'MALDONADO', tasks: new DoublyLinkedList() },
+            { id: 4, name: 'HERMES', tasks: new DoublyLinkedList() }
+        ];
+
+        let currentUser = null;
+        const undoStack = new Stack();
+        const notificationQueue = new Queue();
+
+        // Inicializar UI
+        function init() {
+            const userListContainer = document.getElementById('usersList');
+            usersData.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'user-item';
+                div.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div class="user-avatar">${user.name[0]}</div>
+                        <span>${user.name}</span>
+                    </div>
+                    <small>></small>
+                `;
+                div.onclick = () => selectUser(user.id, div);
+                userListContainer.appendChild(div);
+            });
+        }
+
+        function selectUser(userId, element) {
+            // UI Toggle
+            document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            // Set Data
+            currentUser = usersData.find(u => u.id === userId);
+            
+            // Render
+            document.getElementById('currentUserTitle').innerText = `Tareas de ${currentUser.name}`;
+            document.getElementById('currentUserSubtitle').innerText = "Gestiona tus pendientes";
+            document.getElementById('taskFormContainer').style.display = 'grid';
+            document.getElementById('statsContainer').style.display = 'flex';
+            
+            // Limpiar pila de deshacer al cambiar usuario (opcional, pero más limpio)
+            while(!undoStack.isEmpty()) undoStack.pop();
+            updateUndoButton();
+
+            renderTasks();
+        }
+
+        function renderTasks() {
+            const list = document.getElementById('taskList');
+            list.innerHTML = '';
+            
+            const tasks = currentUser.tasks.toArray();
+            
+            // Contadores
+            let pending = 0, progress = 0, completed = 0;
+
+            if (tasks.length === 0) {
+                list.innerHTML = `<p style="text-align:center; color:gray; margin-top:20px;">No hay tareas asignadas.</p>`;
+            } else {
+                tasks.forEach(task => {
+                    // Actualizar contadores
+                    if(task.status === 'pending') pending++;
+                    else if(task.status === 'progress') progress++;
+                    else completed++;
+
+                    // Crear tarjeta HTML
+                    const card = document.createElement('div');
+                    card.className = `task-card status-${task.status}`;
+                    card.id = `task-${task.id}`;
+                    card.innerHTML = `
+                        <div class="task-info">
+                            <h3>${task.title}</h3>
+                            <p>${task.desc}</p>
+                            <div class="task-meta">
+                                <span>📅 ${task.date || 'Sin fecha'}</span>
+                                <span style="text-transform:uppercase; font-weight:bold; font-size:0.7rem; border:1px solid #555; padding:2px 5px; border-radius:4px;">${task.status}</span>
+                            </div>
+                        </div>
+                        <div class="actions">
+                            ${task.status !== 'completed' ? `<button class="btn-complete" onclick="toggleComplete(${task.id})">✔</button>` : ''}
+                            <button class="btn-delete" onclick="deleteTask(${task.id})">🗑</button>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            }
+
+            // Actualizar DOM Contadores
+            document.getElementById('countPending').innerText = pending;
+            document.getElementById('countProgress').innerText = progress;
+            document.getElementById('countCompleted').innerText = completed;
+        }
+
+        // ==========================================
+        // 3. OPERACIONES (CRUD)
+        // ==========================================
+
+        function addTask() {
+            const title = document.getElementById('inputTitle').value;
+            const desc = document.getElementById('inputDesc').value;
+            const status = document.getElementById('inputStatus').value;
+            const date = document.getElementById('inputDate').value;
+
+            if (!title) return alert("El título es obligatorio");
+
+            const newTask = {
+                id: Date.now(),
+                title,
+                desc,
+                status,
+                date
+            };
+
+            currentUser.tasks.append(newTask);
+            
+            // Limpiar inputs
+            document.getElementById('inputTitle').value = '';
+            document.getElementById('inputDesc').value = '';
+            
+            // Notificación (Cola)
+            notificationQueue.enqueue(`Tarea "${title}" agregada a ${currentUser.name}`);
+            
+            renderTasks();
+        }
+
+        function deleteTask(id) {
+            const card = document.getElementById(`task-${id}`);
+            card.style.animation = "slideOut 0.4s forwards";
+
+            setTimeout(() => {
+                const deletedTask = currentUser.tasks.remove(id);
+                if (deletedTask) {
+                    // Agregar a la Pila de Deshacer
+                    undoStack.push(deletedTask);
+                    updateUndoButton();
+                    
+                    notificationQueue.enqueue(`Tarea eliminada. Puedes deshacerlo.`);
+                    renderTasks();
+                }
+            }, 400);
+        }
+
+        function toggleComplete(id) {
+            currentUser.tasks.updateStatus(id, 'completed');
+            renderTasks();
+        }
+
+        // ==========================================
+        // 4. FUNCIONALIDAD EXTRA (STACK/QUEUE)
+        // ==========================================
+
+        function undoDelete() {
+            if (!undoStack.isEmpty()) {
+                const taskToRestore = undoStack.pop();
+                currentUser.tasks.append(taskToRestore); // Vuelve a la lista (al final)
+                notificationQueue.enqueue(`Tarea "${taskToRestore.title}" restaurada.`);
+                updateUndoButton();
+                renderTasks();
+            }
+        }
+
+        function updateUndoButton() {
+            const btn = document.getElementById('btnUndo');
+            btn.style.display = undoStack.isEmpty() ? 'none' : 'block';
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('notificationContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerText = message;
+
+            container.appendChild(toast);
+
+            // Eliminar de la cola y del DOM después de 3 seg
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    toast.remove();
+                    notificationQueue.dequeue(); // Limpiar lógica
+                }, 300);
+            }, 3000);
+        }
+
+        // Arrancar app
+        init();
+
+    </script>
+</body>
+</html>
